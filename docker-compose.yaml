@@ -3,12 +3,38 @@ version: "3.9"
 services:
   geth:
     build: .
+    container_name: node-eth-geth
+    restart: always
     ports:
       - 4242:4242
       - 30303:30303
     volumes:
-      - geth_data:/root/.ethereum
+      - ./geth_data:/root/.ethereum
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.node-eth-geth.rule=Host(`${ETH_DOMAIN}`)
+      - traefik.http.routers.node-eth-geth.service=node-eth-geth
+      - traefik.http.routers.node-eth-geth.entrypoints=web
+      - traefik.http.routers.node-eth-gethSecure.rule=Host(`${ETH_DOMAIN}`)
+      - traefik.http.routers.node-eth-gethSecure.service=node-eth-geth
+      - traefik.http.routers.node-eth-gethSecure.entrypoints=webSecure
+      - traefik.http.routers.node-eth-gethSecure.tls.certresolver=letsEncrypt
 
-volumes:
-  geth_data:
-    driver: local
+      - traefik.http.middlewares.sharp-header.headers.FrameDeny=true
+      - traefik.http.middlewares.sharp-header.headers.browserXssFilter=true
+      - traefik.http.middlewares.sharp-header.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.sharp-header.headers.stsSeconds=315360000
+      - traefik.http.middlewares.sharp-header.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.sharp-header.headers.stsPreload=true
+
+      - traefik.http.middlewares.https-redirect.redirectScheme.scheme=https
+      - traefik.http.middlewares.https-redirect.redirectScheme.permanent=true
+
+      - traefik.http.routers.node-eth-geth.middlewares=sharp-header@docker,https-redirect@docker
+      - traefik.http.routers.node-eth-gethSecure.middlewares=sharp-header@docker,https-redirect@docker
+
+      # - traefik.http.services.node-eth-geth.loadbalancer.server.port=4000
+
+networks:
+  traefik:
+    external: true
