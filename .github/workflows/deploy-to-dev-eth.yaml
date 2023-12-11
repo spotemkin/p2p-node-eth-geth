@@ -1,0 +1,78 @@
+name: P2P ETH GETH HARDHAT to DEV
+
+on:
+  workflow_dispatch:
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.1.0
+
+      - name: List files
+        run: ls -l
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/${{ github.repository }}/p2p-node-eth-geth
+          tags: |
+            latest
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v3.2.0
+        # env:
+        # REACT_APP_PERSONAL_COLLECTION_ROOT_ADDRESS: ${{ vars.PERSONAL_COLLECTION_ROOT_ADDRESS }}
+        # REACT_APP_FIX_PRICE_ROOT: ${{ vars.FIX_PRICE_ROOT }}
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # build-args: |
+          # "REACT_APP_PERSONAL_COLLECTION_ROOT_ADDRESS=${{ vars.PERSONAL_COLLECTION_ROOT_ADDRESS }}"
+          # "REACT_APP_FIX_PRICE_ROOT=${{ vars.FIX_PRICE_ROOT }}"
+
+      - name: Copy Docker files on server
+        uses: appleboy/scp-action@v0.1.3
+        with:
+          host: ${{ vars.MAIN_DOMAIN }}
+          port: ${{ vars.SSH_PORT }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.DEV_SERVER_KEY }}
+          source: Dockerfile,package.json,index.js,docker-compose-dev-eth.yaml
+          target: /srv/p2p-node-eth-geth/
+          overwrite: true
+
+      - name: Deployment
+        uses: appleboy/ssh-action@master
+        with:
+          script: |
+            cd /srv/p2p-node-eth-geth/
+            ls -l
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login https://ghcr.io --username ${{ github.repository_owner }} --password-stdin
+            # export SHARP_HOST=${{ vars.SHARP_HOST }}
+            # export APP_SECRET=${{ secrets.APP_SECRET }}
+            docker compose -f docker-compose-sharp.yaml pull
+            docker compose -f docker-compose-sharp.yaml down
+            docker compose -f docker-compose-sharp.yaml up -d
+          host: ${{ vars.MAIN_DOMAIN }}
+          port: ${{ vars.SSH_PORT }}
+          username: ${{ vars.SSH_USER }}
+          key: ${{ secrets.DEV_SERVER_KEY }}
